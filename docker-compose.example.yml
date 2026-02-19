@@ -1,0 +1,37 @@
+services:
+  redbark-sure-sync:
+    image: ghcr.io/redbark-co/sure-sync:latest
+    # Or build locally:
+    # build: .
+    restart: "no"
+    environment:
+      - REDBARK_API_KEY=rbk_live_your_key_here
+      - SURE_URL=http://sure:3000
+      - SURE_API_KEY=your-sure-api-key
+      - ACCOUNT_MAPPING=redbark-acc-id:sure-acc-uuid
+      - SYNC_DAYS=30
+      - TAG_NAME=Redbark
+      - LOG_LEVEL=info
+
+  # Optional: include if you also self-host Sure alongside
+  sure:
+    image: ghcr.io/we-promise/sure:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - SECRET_KEY_BASE=change-me-to-a-random-64-char-hex-string
+      - DATABASE_URL=postgres://sure:sure@postgres:5432/sure
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sure
+      POSTGRES_USER: sure
+      POSTGRES_PASSWORD: sure
+
+  redis:
+    image: redis:7-alpine
