@@ -39,7 +39,7 @@ const categoryMappingSchema = z
 
 const configSchema = z.object({
   redbarkApiKey: z.string().min(1, 'REDBARK_API_KEY is required'),
-  redbarkApiUrl: z.string().url().default('https://app.redbark.io'),
+  redbarkApiUrl: z.string().url().default('https://api.redbark.co'),
   sureUrl: z.string().min(1, 'SURE_URL is required'),
   sureApiKey: z.string().min(1, 'SURE_API_KEY is required'),
   accountMapping: accountMappingSchema,
@@ -64,7 +64,7 @@ export function loadConfig(overrides?: Partial<Record<string, string>>): Config 
 
   const result = configSchema.safeParse({
     redbarkApiKey: env.REDBARK_API_KEY,
-    redbarkApiUrl: env.REDBARK_API_URL || 'https://app.redbark.io',
+    redbarkApiUrl: env.REDBARK_API_URL || 'https://api.redbark.co',
     sureUrl: env.SURE_URL,
     sureApiKey: env.SURE_API_KEY,
     accountMapping: env.ACCOUNT_MAPPING,
