@@ -1,6 +1,6 @@
 # Redbark Sure Sync
 
-Automatically sync bank transactions from [Redbark](https://redbark.io) to your self-hosted [Sure](https://github.com/we-promise/sure) instance.
+Automatically sync bank transactions from [Redbark](https://redbark.co) to your self-hosted [Sure](https://github.com/we-promise/sure) instance.
 
 Ships as a single Docker image. Pull, configure, schedule, done.
 
@@ -17,7 +17,7 @@ Supports all Redbark banking providers: Fiskil (AU), Akahu (NZ), SnapTrade (glob
 
 ### 1. Get a Redbark API Key
 
-1. Log into [Redbark](https://app.redbark.io)
+1. Log into [Redbark](https://app.redbark.co)
 2. Go to **Settings > API Keys**
 3. Create a key and copy it (shown once)
 
@@ -82,7 +82,7 @@ docker run --rm --env-file .env ghcr.io/redbark-co/sure-sync:latest
 | `SURE_URL` | Yes | — | URL of your Sure instance |
 | `SURE_API_KEY` | Yes | — | Sure API key (`read_write` scope) |
 | `ACCOUNT_MAPPING` | Yes | — | Account mapping (see below) |
-| `REDBARK_API_URL` | No | `https://app.redbark.io` | Redbark API base URL |
+| `REDBARK_API_URL` | No | `https://api.redbark.co` | Redbark API base URL |
 | `SYNC_DAYS` | No | `30` | Number of days of history to sync |
 | `CATEGORY_MAPPING` | No | — | Category mapping (see below) |
 | `TAG_NAME` | No | — | Tag name to apply to synced transactions |
