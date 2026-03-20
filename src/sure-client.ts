@@ -2,6 +2,7 @@ import { logger } from './logger.js'
 import type {
   SureAccount,
   SureCategory,
+  SurePagination,
   SureTag,
   SureTransaction,
   SureTransactionCreate,
@@ -10,6 +11,16 @@ import type {
 const VERSION = '0.1.0'
 const REQUEST_TIMEOUT_MS = 30_000
 const MAX_RETRIES = 3
+
+/**
+ * Sure's API returns wrapped objects, not plain arrays.
+ * e.g. GET /accounts → { accounts: [...], pagination: {...} }
+ * e.g. GET /transactions → { transactions: [...], pagination: {...} }
+ */
+interface SurePaginatedResponse<T> {
+  pagination: SurePagination
+  [key: string]: T[] | SurePagination
+}
 
 export class SureClient {
   private baseUrl: string
@@ -22,7 +33,7 @@ export class SureClient {
 
   /** List all accounts (paginated, fetches all pages). */
   async listAccounts(): Promise<SureAccount[]> {
-    return this.fetchAllPages<SureAccount>('/accounts')
+    return this.fetchAllPages<SureAccount>('/accounts', 'accounts')
   }
 
   /** List transactions with filters. */
@@ -31,7 +42,7 @@ export class SureClient {
     startDate: string
     endDate: string
   }): Promise<SureTransaction[]> {
-    return this.fetchAllPages<SureTransaction>('/transactions', {
+    return this.fetchAllPages<SureTransaction>('/transactions', 'transactions', {
       account_id: params.accountId,
       start_date: params.startDate,
       end_date: params.endDate,
@@ -43,14 +54,36 @@ export class SureClient {
     return this.post<SureTransaction>('/transactions', { transaction: txn })
   }
 
-  /** List categories (for optional mapping). */
+  /**
+   * List categories. Sure's public API may not have this endpoint.
+   * Returns empty array on 404.
+   */
   async listCategories(): Promise<SureCategory[]> {
-    return this.fetchAllPages<SureCategory>('/categories')
+    try {
+      return await this.fetchAllPages<SureCategory>('/categories', 'categories')
+    } catch (error) {
+      if (error instanceof SureApiError && error.status === 404) {
+        logger.debug('Categories endpoint not available (404)')
+        return []
+      }
+      throw error
+    }
   }
 
-  /** List tags. */
+  /**
+   * List tags. Sure's public API may not have this endpoint.
+   * Returns empty array on 404.
+   */
   async listTags(): Promise<SureTag[]> {
-    return this.fetchAllPages<SureTag>('/tags')
+    try {
+      return await this.fetchAllPages<SureTag>('/tags', 'tags')
+    } catch (error) {
+      if (error instanceof SureApiError && error.status === 404) {
+        logger.debug('Tags endpoint not available (404)')
+        return []
+      }
+      throw error
+    }
   }
 
   // ── Internal ─────────────────────
@@ -137,7 +170,15 @@ export class SureClient {
     throw new SureApiError(0, `Failed to reach Sure API after ${MAX_RETRIES} attempts`)
   }
 
-  private async fetchAllPages<T>(path: string, params?: Record<string, string>): Promise<T[]> {
+  /**
+   * Fetch all pages from a paginated Sure endpoint.
+   * Sure returns wrapped objects: { <resourceKey>: [...], pagination: {...} }
+   */
+  private async fetchAllPages<T>(
+    path: string,
+    resourceKey: string,
+    params?: Record<string, string>,
+  ): Promise<T[]> {
     const results: T[] = []
     let page = 1
     const perPage = 100
@@ -148,11 +189,35 @@ export class SureClient {
         page: String(page),
         per_page: String(perPage),
       })
-      const data = await this.request<T[]>('GET', `${path}?${queryParams}`)
-      results.push(...data)
+      const response = await this.request<Record<string, unknown>>(
+        'GET',
+        `${path}?${queryParams}`,
+      )
 
-      if (data.length < perPage) break
-      page++
+      const items = response[resourceKey] as T[] | undefined
+      if (!items || !Array.isArray(items)) {
+        // Fallback: if response is itself an array (unlikely but safe)
+        if (Array.isArray(response)) {
+          results.push(...(response as T[]))
+          break
+        }
+        logger.warn(
+          { resourceKey, responseKeys: Object.keys(response) },
+          `Unexpected response shape: missing '${resourceKey}' key`,
+        )
+        break
+      }
+
+      results.push(...items)
+
+      const pagination = response.pagination as SurePagination | undefined
+      if (pagination && pagination.total_pages > page) {
+        page++
+      } else if (items.length < perPage) {
+        break
+      } else {
+        page++
+      }
     }
 
     return results
