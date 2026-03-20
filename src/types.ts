@@ -64,12 +64,20 @@ export interface PaginatedResponse<T> {
 
 // Sure types
 
+export interface SurePagination {
+  page: number
+  per_page: number
+  total_count: number
+  total_pages: number
+}
+
 export interface SureAccount {
   id: string
   name: string
-  account_type: string
   balance: string
   currency: string
+  classification: string
+  account_type: string
 }
 
 export interface SureTransaction {
@@ -80,12 +88,12 @@ export interface SureTransaction {
   signed_amount_cents: number
   currency: string
   name: string
+  notes: string | null
   classification: string
   account: { id: string; name: string; account_type: string }
-  category: { id: string; name: string } | null
+  category: { id: string; name: string; color: string; icon: string } | null
   merchant: { id: string; name: string } | null
-  tags: { id: string; name: string }[]
-  notes: string | null
+  tags: { id: string; name: string; color: string }[]
   created_at: string
   updated_at: string
 }

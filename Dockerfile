@@ -23,5 +23,4 @@ COPY --from=builder /app/package.json ./package.json
 ENV NODE_ENV=production
 
 # Use tini as init process for proper signal handling in Docker
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "main.cjs"]
+ENTRYPOINT ["/sbin/tini", "--", "node", "main.cjs"]
