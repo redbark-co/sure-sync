@@ -55,6 +55,7 @@ const configSchema = z.object({
     .default('false'),
   batchSize: z.coerce.number().int().positive().max(100).default(25),
   currency: z.string().length(3).optional(),
+  syncIntervalHours: z.coerce.number().positive().optional(),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -75,6 +76,7 @@ export function loadConfig(overrides?: Partial<Record<string, string>>): Config 
     dryRun: env.DRY_RUN || 'false',
     batchSize: env.BATCH_SIZE || '25',
     currency: env.CURRENCY || undefined,
+    syncIntervalHours: env.SYNC_INTERVAL || undefined,
   })
 
   if (!result.success) {
