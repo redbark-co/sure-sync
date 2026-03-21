@@ -1,5 +1,5 @@
 import { logger } from './logger.js'
-import { loadConfig, ConfigError } from './config.js'
+import { loadConfig, ConfigError, type Config } from './config.js'
 import { RedbarkClient } from './redbark-client.js'
 import { SureClient } from './sure-client.js'
 import { runSync } from './sync.js'
@@ -12,16 +12,19 @@ const EXIT_CONNECTION_ERROR = 3
 
 interface CliFlags {
   listRedbarkAccounts: boolean
+  listRedbarkCategories: boolean
   listSureAccounts: boolean
   listSureCategories: boolean
   dryRun: boolean
   days?: number
+  interval?: number
   help: boolean
 }
 
 function parseArgs(argv: string[]): CliFlags {
   const flags: CliFlags = {
     listRedbarkAccounts: false,
+    listRedbarkCategories: false,
     listSureAccounts: false,
     listSureCategories: false,
     dryRun: false,
@@ -33,6 +36,9 @@ function parseArgs(argv: string[]): CliFlags {
     switch (arg) {
       case '--list-redbark-accounts':
         flags.listRedbarkAccounts = true
+        break
+      case '--list-redbark-categories':
+        flags.listRedbarkCategories = true
         break
       case '--list-sure-accounts':
         flags.listSureAccounts = true
@@ -50,6 +56,15 @@ function parseArgs(argv: string[]): CliFlags {
           process.exit(EXIT_CONFIG_ERROR)
         }
         flags.days = parseInt(val, 10)
+        break
+      }
+      case '--interval': {
+        const val = argv[++i]
+        if (!val || isNaN(parseFloat(val)) || parseFloat(val) <= 0) {
+          console.error('ERROR: --interval requires a positive number (hours)')
+          process.exit(EXIT_CONFIG_ERROR)
+        }
+        flags.interval = parseFloat(val)
         break
       }
       case '--help':
@@ -75,11 +90,13 @@ USAGE:
   redbark-sure-sync [OPTIONS]
 
 OPTIONS:
-  --list-redbark-accounts   List Redbark accounts (to find IDs for mapping)
-  --list-sure-accounts      List Sure accounts (to find IDs for mapping)
-  --list-sure-categories    List Sure categories (to find IDs for category mapping)
+  --list-redbark-accounts     List Redbark accounts (to find IDs for mapping)
+  --list-redbark-categories   List Redbark transaction categories (for category mapping)
+  --list-sure-accounts        List Sure accounts (to find IDs for mapping)
+  --list-sure-categories      List Sure categories (to find IDs for category mapping)
   --dry-run                 Preview what would be created without writing
   --days <number>           Number of days to sync (default: 30)
+  --interval <hours>        Keep running and re-sync every N hours (e.g. 6)
   --help, -h                Show this help message
 
 ENVIRONMENT VARIABLES:
@@ -95,6 +112,7 @@ ENVIRONMENT VARIABLES:
   DRY_RUN                     true/false (default: false)
   BATCH_SIZE                  Transactions per batch (default: 25)
   CURRENCY                    Override currency (e.g. AUD)
+  SYNC_INTERVAL               Keep running, sync every N hours (e.g. 6)
 
 EXAMPLES:
   # Run sync
@@ -110,7 +128,8 @@ EXAMPLES:
   redbark-sure-sync --list-redbark-accounts
   redbark-sure-sync --list-sure-accounts
 
-  # Find category IDs for mapping
+  # Find category names for mapping
+  redbark-sure-sync --list-redbark-categories
   redbark-sure-sync --list-sure-categories
 
 DOCKER:
@@ -156,6 +175,29 @@ async function handleListRedbarkAccounts(): Promise<void> {
     }
     console.log()
   }
+}
+
+async function handleListRedbarkCategories(): Promise<void> {
+  const apiKey = process.env.REDBARK_API_KEY
+  const apiUrl = process.env.REDBARK_API_URL || 'https://api.redbark.co'
+
+  if (!apiKey) {
+    console.error(
+      'ERROR: REDBARK_API_KEY is not set.\n' +
+        '  → Create an API key at https://app.redbark.co/settings/api'
+    )
+    process.exit(EXIT_CONFIG_ERROR)
+  }
+
+  const client = new RedbarkClient(apiKey, apiUrl)
+  const categories = await client.listCategories()
+
+  console.log('\nRedbark Transaction Categories:')
+  console.log('  Use these names on the left side of CATEGORY_MAPPING.\n')
+  for (const cat of categories) {
+    console.log(`  ${cat.label}`)
+  }
+  console.log()
 }
 
 async function handleListSureAccounts(): Promise<void> {
@@ -221,6 +263,11 @@ async function main(): Promise<void> {
     process.exit(EXIT_SUCCESS)
   }
 
+  if (flags.listRedbarkCategories) {
+    await handleListRedbarkCategories()
+    process.exit(EXIT_SUCCESS)
+  }
+
   if (flags.listSureAccounts) {
     await handleListSureAccounts()
     process.exit(EXIT_SUCCESS)
@@ -235,6 +282,7 @@ async function main(): Promise<void> {
   const overrides: Record<string, string> = {}
   if (flags.dryRun) overrides.DRY_RUN = 'true'
   if (flags.days) overrides.SYNC_DAYS = String(flags.days)
+  if (flags.interval) overrides.SYNC_INTERVAL = String(flags.interval)
 
   // Load and validate config
   const config = loadConfig(overrides)
@@ -243,10 +291,43 @@ async function main(): Promise<void> {
     logger.info('[DRY RUN] Preview mode — no changes will be written')
   }
 
-  // Run sync
+  const intervalMs = config.syncIntervalHours
+    ? config.syncIntervalHours * 60 * 60 * 1000
+    : undefined
+
+  if (intervalMs) {
+    logger.info(
+      { intervalHours: config.syncIntervalHours },
+      `Running in continuous mode, syncing every ${config.syncIntervalHours} hours`
+    )
+  }
+
+  // Run sync (once or in a loop)
+  while (true) {
+    try {
+      const hasErrors = await runOnce(config)
+
+      if (!intervalMs) {
+        if (hasErrors) process.exit(EXIT_SYNC_ERRORS)
+        break
+      }
+    } catch (error) {
+      if (!intervalMs) throw error
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Sync failed, will retry next interval'
+      )
+    }
+
+    const nextRun = new Date(Date.now() + intervalMs)
+    logger.info({ nextRun: nextRun.toISOString() }, `Next sync at ${nextRun.toISOString()}`)
+    await sleep(intervalMs)
+  }
+}
+
+async function runOnce(config: Config): Promise<boolean> {
   const results = await runSync(config)
 
-  // Summary
   const totalCreated = results.reduce((sum, r) => sum + r.created, 0)
   const totalSkipped = results.reduce((sum, r) => sum + r.skipped, 0)
   const totalErrors = results.reduce((sum, r) => sum + r.errors, 0)
@@ -262,9 +343,11 @@ async function main(): Promise<void> {
     )
   }
 
-  if (totalErrors > 0) {
-    process.exit(EXIT_SYNC_ERRORS)
-  }
+  return totalErrors > 0
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 main().catch((error) => {
