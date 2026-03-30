@@ -112,4 +112,24 @@ describe('loadConfig', () => {
     const { SURE_API_KEY, ...rest } = validEnv
     expect(() => loadConfig(rest)).toThrow(ConfigError)
   })
+
+  it('parses SYNC_INTERVAL as hours', () => {
+    const config = loadConfig({ ...validEnv, SYNC_INTERVAL: '6' })
+    expect(config.syncIntervalHours).toBe(6)
+  })
+
+  it('accepts fractional SYNC_INTERVAL', () => {
+    const config = loadConfig({ ...validEnv, SYNC_INTERVAL: '0.5' })
+    expect(config.syncIntervalHours).toBe(0.5)
+  })
+
+  it('rejects non-positive SYNC_INTERVAL', () => {
+    expect(() => loadConfig({ ...validEnv, SYNC_INTERVAL: '-1' })).toThrow(ConfigError)
+    expect(() => loadConfig({ ...validEnv, SYNC_INTERVAL: '0' })).toThrow(ConfigError)
+  })
+
+  it('leaves syncIntervalHours undefined when SYNC_INTERVAL is not set', () => {
+    const config = loadConfig(validEnv)
+    expect(config.syncIntervalHours).toBeUndefined()
+  })
 })
