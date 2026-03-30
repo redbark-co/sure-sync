@@ -1,3 +1,9 @@
+## NOTE: This container runs the sync once and then exits. To sync on a
+## recurring schedule, either:
+##   1. Set SYNC_INTERVAL below (continuous mode, syncs every N hours), or
+##   2. Run via cron / systemd timer:
+##        0 */6 * * * docker compose run --rm redbark-sure-sync >> /var/log/redbark-sure-sync.log 2>&1
+
 services:
   redbark-sure-sync:
     image: ghcr.io/redbark-co/sure-sync:latest
@@ -12,6 +18,8 @@ services:
       - SYNC_DAYS=30
       - TAG_NAME=Redbark
       - LOG_LEVEL=info
+      # Uncomment to sync continuously every N hours instead of running once:
+      # - SYNC_INTERVAL=6
 
   # Optional: include if you also self-host Sure alongside
   sure:

@@ -11,6 +11,8 @@ Ships as a single Docker image. Pull, configure, schedule, done.
 3. Creates transactions in Sure via REST API with deduplication
 4. Safe to run repeatedly — duplicate transactions are never created
 
+> **Note:** Sure Sync runs independently of the Redbark web app. It pulls data via your API key and pushes directly to Sure. It won't appear as a destination or integration in the Redbark dashboard since it operates outside of Redbark's sync pipeline.
+
 Supports all Redbark banking providers: Fiskil (AU), Akahu (NZ), SnapTrade (global).
 
 ## Quick Start
@@ -90,6 +92,7 @@ docker run --rm --env-file .env ghcr.io/redbark-co/sure-sync:latest
 | `DRY_RUN` | No | `false` | Set to `true` to preview without creating |
 | `BATCH_SIZE` | No | `25` | Transactions per batch (max 100) |
 | `CURRENCY` | No | — | Override currency for all transactions (e.g. `AUD`) |
+| `SYNC_INTERVAL` | No | — | Keep running and re-sync every N hours (e.g. `6`) |
 
 ### Account Mapping
 
@@ -139,6 +142,12 @@ No volume is needed — Sure sync is stateless (no local cache).
 ### Docker Compose
 
 See [`docker-compose.example.yml`](docker-compose.example.yml) for a ready-to-use setup that includes both this tool and a Sure instance with Postgres and Redis.
+
+The container runs the sync once and exits. For recurring sync, either set `SYNC_INTERVAL=6` in the environment (continuous mode, syncs every N hours) or schedule via cron:
+
+```bash
+0 */6 * * * docker compose run --rm redbark-sure-sync >> /var/log/redbark-sure-sync.log 2>&1
+```
 
 ### Kubernetes CronJob
 
